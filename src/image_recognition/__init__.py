@@ -1,5 +1,6 @@
 import argparse
 import sys
+import os 
 import datetime
 from importlib.metadata import entry_points
 
@@ -138,6 +139,10 @@ def main():
         model = train(model, x_train, y_train, x_test, y_test, epochs)
 
     model_filename = path_to_model + RUN + '.keras'
+    try: 
+        os.mkdir(path_to_model) 
+    except OSError: 
+        pass 
     model.save(model_filename, save_format='keras')
     print(f'Model is saved here: {model_filename}')
 
