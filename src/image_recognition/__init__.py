@@ -1,4 +1,4 @@
-import argparse 
+import argparse
 import sys
 import datetime
 from importlib.metadata import entry_points
@@ -20,29 +20,56 @@ CLASS_NAMES = [
 
 plugin_eps = entry_points(group="image_recognition.plugins")
 
+
+def predict(path_to_model, x_test, y_test):
+    model = tf.keras.saving.load_model(path_to_model)
+    prediction_values = model.predict(x_test)
+
+    # set up the figure
+    fig = plt.figure(figsize=(15, 7))
+    fig.subplots_adjust(left=0, right=1, bottom=0,
+                        top=1, hspace=0.05, wspace=0.05)
+
+    # plot the images: each image is 28x28 pixels
+    for i in range(50):
+        ax = fig.add_subplot(5, 10, i + 1, xticks=[], yticks=[])
+        ax.imshow(x_test[i, :].reshape((28, 28)),
+                  cmap=plt.cm.gray_r, interpolation='nearest')
+
+        predicted_class = np.argmax(prediction_values[i])
+        observed_class = np.argmax(y_test[i])
+        if predicted_class == observed_class:
+            # label the image with the blue text
+            ax.text(0, 7, CLASS_NAMES[predicted_class], color='blue')
+        else:
+            # label the image with the red text
+            ax.text(0, 7, CLASS_NAMES[predicted_class], color='red')
+    plt.show()
+
+
 try:
     model_factory = plugin_eps['model'].load()
 except KeyError:
-    class LeNet(tf.keras.models.Sequential):
-        def __init__(self, input_shape, nb_classes):
-            super().__init__()
-            self.add(tf.keras.layers.Conv2D(6, kernel_size=(5, 5), strides=(
-                1, 1), activation='tanh', input_shape=input_shape, padding="same"))
-            self.add(tf.keras.layers.AveragePooling2D(
-                pool_size=(2, 2), strides=(2, 2), padding='valid'))
-            self.add(tf.keras.layers.Conv2D(16, kernel_size=(5, 5),
-                                            strides=(1, 1), activation='tanh', padding='valid'))
-            self.add(tf.keras.layers.AveragePooling2D(
-                pool_size=(2, 2), strides=(2, 2), padding='valid'))
-            self.add(tf.keras.layers.Flatten())
-            self.add(tf.keras.layers.Dense(120, activation='tanh'))
-            self.add(tf.keras.layers.Dense(84, activation='tanh'))
-            self.add(tf.keras.layers.Dense(nb_classes, activation='softmax'))
-
-            self.compile(optimizer='adam',
-                         loss=tf.keras.losses.categorical_crossentropy,
-                         metrics=['accuracy'])
-    model_factory = LeNet
+    def model_factory(input_shape, nb_classes): 
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Conv2D(6, kernel_size=(5, 5), strides=(
+                1, 1), activation='tanh', input_shape=input_shape, padding="same"),
+            tf.keras.layers.AveragePooling2D(
+                pool_size=(2, 2), strides=(2, 2), padding='valid'),
+            tf.keras.layers.Conv2D(16, kernel_size=(5, 5),
+                                            strides=(1, 1), activation='tanh', padding='valid'),
+            tf.keras.layers.AveragePooling2D(
+                pool_size=(2, 2), strides=(2, 2), padding='valid'),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(120, activation='tanh'),
+            tf.keras.layers.Dense(84, activation='tanh'),
+            tf.keras.layers.Dense(nb_classes, activation='softmax')
+        ])
+        model.compile(optimizer=tf.keras.optimizers.Adam(),
+                      loss=tf.keras.losses.categorical_crossentropy,
+                      metrics=['accuracy'])
+   
+        return model 
 
 
 try:
@@ -71,34 +98,19 @@ except KeyError:
         model.fit(x_train, y=y_train, epochs=epochs,
                   validation_data=(x_test, y_test),
                   callbacks=[tensorboard_callback])
-        return model 
+        return model
 
 try:
     predict = plugin_eps['predict'].load()
 except KeyError:
-    def predict(model, x_test, y_test):
-        prediction_values = model.predict(x_test)
+    pass
 
-        # set up the figure
-        fig = plt.figure(figsize=(15, 7))
-        fig.subplots_adjust(left=0, right=1, bottom=0,
-                            top=1, hspace=0.05, wspace=0.05)
 
-        # plot the images: each image is 28x28 pixels
-        for i in range(50):
-            ax = fig.add_subplot(5, 10, i + 1, xticks=[], yticks=[])
-            ax.imshow(x_test[i, :].reshape((28, 28)),
-                      cmap=plt.cm.gray_r, interpolation='nearest')
+def get_data():
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()
 
-            predicted_class = np.argmax(prediction_values[i])
-            observed_class = np.argmax(y_test[i])
-            if predicted_class == observed_class:
-                # label the image with the blue text
-                ax.text(0, 7, CLASS_NAMES[predicted_class], color='blue')
-            else:
-                # label the image with the red text
-                ax.text(0, 7, CLASS_NAMES[predicted_class], color='red')
-        plt.show()
+    return preprocess(
+        x_train, y_train, x_test, y_test)
 
 
 def main():
@@ -106,26 +118,28 @@ def main():
         print("No model factory!")
         sys.exit(1)
 
-    parser = argparse.ArgumentParser('Machine Learning Trainer') 
+    parser = argparse.ArgumentParser('Machine Learning Trainer')
 
-    parser.add_argument('-e', '--epochs', help="Number of epochs to train for", dest='e')  
+    parser.add_argument(
+        '-e', '--epochs', help="Number of epochs to train for", dest='e')
+    parser.add_argument('-o', '--model-output',
+                        help="Directory where models are saved", dest='o', default='/tmp/models/')
 
-    argv = parser.parse_args() 
+    argv = parser.parse_args()
     epochs = int(argv.e)
+    path_to_model = argv.o
 
-    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()
-
-    (x_train, y_train), (x_test, y_test) = preprocess(
-        x_train, y_train, x_test, y_test)
+    (x_train, y_train), (x_test, y_test) = get_data()
 
     model = model_factory(x_train[0].shape, NUM_CLASSES)
     print(model.summary())
 
-    if epochs: 
+    if epochs:
         model = train(model, x_train, y_train, x_test, y_test, epochs)
 
-    model.save('/tmp/models/model'+RUN, save_format='h5')
-
+    model_filename = path_to_model + RUN + '.keras'
+    model.save(model_filename, save_format='keras')
+    print(f'Model is saved here: {model_filename}')
 
 
 if __name__ == "__main__":
