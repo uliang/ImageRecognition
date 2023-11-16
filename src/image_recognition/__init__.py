@@ -12,7 +12,8 @@ import matplotlib.pyplot as plt
 
 NUM_CLASSES = 10
 INPUT_SHAPE = (28, 28, 1)
-LOG_DIR = '/tmp/logs/fit' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+RUN = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+LOG_DIR = '/tmp/logs/fit' + RUN
 CLASS_NAMES = [
     'T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
     'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot']
@@ -70,6 +71,7 @@ except KeyError:
         model.fit(x_train, y=y_train, epochs=epochs,
                   validation_data=(x_test, y_test),
                   callbacks=[tensorboard_callback])
+        return model 
 
 try:
     predict = plugin_eps['predict'].load()
@@ -119,20 +121,11 @@ def main():
     model = model_factory(x_train[0].shape, NUM_CLASSES)
     print(model.summary())
 
-    input('Press any key to continue...')
-
     if epochs: 
-        train(model, x_train, y_train, x_test, y_test, epochs)
+        model = train(model, x_train, y_train, x_test, y_test, epochs)
 
-    while 1:
-        s = input('Key in (p) to show sample predictions or (q) to quit')
+    model.save('/tmp/models/model'+RUN, save_format='h5')
 
-        if s == 'p':
-            predict(model, x_test, y_test)
-            return
-        elif s == 'q':
-            print("Quitting!")
-            return
 
 
 if __name__ == "__main__":
